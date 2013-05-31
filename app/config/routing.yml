@@ -1,0 +1,4 @@
+fastre_budget:
+    resource: "@FastreBudgetBundle/Resources/config/routing.yml"
+    prefix:   /
+
