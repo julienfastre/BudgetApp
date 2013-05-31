@@ -37,6 +37,13 @@ class ImportCommand extends ContainerAwareCommand {
         
         
         $client = $this->getContainer()->get('neo4jclient');
+
+        $ville = $client->makeNode();
+
+        $ville->setProperty(Entry::KEY_TYPE, 'liege')
+                  ->setProperty('name', $input->getArgument(self::ARGUMENT_CITY));
+
+        $ville->save();
         
         $row = 1;
         if (($handle = fopen($input->getArgument(self::ARGUMENT_FILE), "r")) !== FALSE) {
@@ -53,6 +60,8 @@ class ImportCommand extends ContainerAwareCommand {
                 
                 $entry->setProperty(Entry::KEY_TYPE, Entry::VALUE_TYPE)
                         ->setProperty(Entry::KEY_LABEL, $data[8]);
+
+                $entry->relateTo($ville, 'has');
                 
                 $entry->save();
                 
