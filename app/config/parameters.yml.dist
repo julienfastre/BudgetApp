@@ -11,5 +11,8 @@ parameters:
     mailer_user:       ~
     mailer_password:   ~
 
-    locale:            en
+    locale:            fr
     secret:            ThisTokenIsNotSoSecretChangeIt
+
+    neo4j_host:        localhost
+    neo4j_port:        7474
