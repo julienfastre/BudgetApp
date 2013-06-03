@@ -7,12 +7,15 @@ namespace Fastre\BudgetBundle\Entity;
  *
  * @author Julien Fastré <julien arobase fastre point info>
  */
-class CategoryFonction {
+class CategoryFonction  extends AbstractNode {
     
-    const KEY_CODE = 'code';
+   const VALUE_TYPE = 'functional_code';
+   
+   
     
     
-    
-    
+   public static function getEntityValue() {
+        return self::VALUE_TYPE;
+    }    
 }
 

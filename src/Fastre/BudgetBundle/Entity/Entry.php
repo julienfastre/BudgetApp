@@ -7,9 +7,8 @@ namespace Fastre\BudgetBundle\Entity;
  *
  * @author Julien Fastré <julien arobase fastre point info>
  */
-class Entry {
+class Entry extends AbstractNode {
     
-    const KEY_TYPE = 'entity';
     const VALUE_TYPE = 'entry';
     
     const KEY_LABEL = 'label';
@@ -24,6 +23,8 @@ class Entry {
     
     
     
-    
+    public static function getEntityValue() {
+        return self::VALUE_TYPE;
+    }    
 }
 
