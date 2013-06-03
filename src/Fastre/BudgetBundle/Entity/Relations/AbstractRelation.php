@@ -9,7 +9,7 @@ namespace Fastre\BudgetBundle\Entity\Relations;
  */
 abstract class AbstractRelation {
     
-    
+
     
 }
 

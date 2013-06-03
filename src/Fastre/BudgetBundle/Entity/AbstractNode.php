@@ -15,7 +15,7 @@ abstract class AbstractNode {
     
     const KEY_LABEL = 'label';
     
-    abstract public static function getEntityValue();
+
     
     
 }

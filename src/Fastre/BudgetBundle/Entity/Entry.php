@@ -21,6 +21,8 @@ class Entry extends AbstractNode {
     
     const KEY_YEAR = 'year';
     
+    const KEY_AMOUNT = 'amount';
+    
     
     
     public static function getEntityValue() {
