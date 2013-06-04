@@ -118,6 +118,10 @@ class ImportCommand extends ContainerAwareCommand {
                 
                 
                $i++; 
+               
+               if ($i > 2000) {
+                   break;
+               } 
             }
         
          fclose($handle);
@@ -158,11 +162,16 @@ class ImportCommand extends ContainerAwareCommand {
         
     }
     
+    private $proxyCategory = array();
     
     private function getOrCreateCategory($code, $row = 'last') {
         
         if ($code === '000') {
             $code = '0';
+        }
+        
+        if (isset($this->proxyCategory[$code])) {
+            return $this->proxyCategory[$code];
         }
         
         $a = str_split($code);
@@ -194,6 +203,7 @@ class ImportCommand extends ContainerAwareCommand {
         echo $result->count()." Résultats \n";
         
         if ($result->count() === 1 ) {
+            $this->proxyCategory[$code] = $result[0]['x'];
             return $result[0]['x'];
         } elseif($result->count() > 1) {
             throw new \Exception('Results should not be more than one...');
@@ -215,6 +225,8 @@ class ImportCommand extends ContainerAwareCommand {
             
             $parent->relateTo($child, hasCategory::getName())
                     ->save();
+            
+            $this->proxyCategory[$code] = $child;
             
             return $child;
         }
