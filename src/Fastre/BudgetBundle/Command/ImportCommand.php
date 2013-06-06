@@ -14,6 +14,9 @@ use Fastre\BudgetBundle\Entity\AbstractNode;
 use Fastre\BudgetBundle\Entity\CategoryFonction;
 use Fastre\BudgetBundle\Entity\Relations\hasCategory;
 use Everyman\Neo4j\Cypher\Query;
+use Fastre\BudgetBundle\Entity\Budget;
+use Fastre\BudgetBundle\Entity\Service;
+use Fastre\BudgetBundle\Entity\JoinCategoryFonction;
 
 /**
  * 
@@ -71,7 +74,44 @@ class ImportCommand extends ContainerAwareCommand {
         
         $this->currentCity = $ville;
         
-        $this->createRootFunctionalCategories($ville);
+        
+        
+        $budget = $client->makeNode()
+                ->setProperty(Budget::KEY_ENTITY, Budget::getEntityValue())
+                ->setProperty(Budget::KEY_CODE, '2012_CMB_2')
+                ->setProperty(Budget::KEY_LABEL, '2012 - 2ième cahier de modification budgétaire')
+                ->setProperty(Budget::KEY_YEAR, 2012)
+                ->save();
+        
+        $ville->relateTo($budget, 'VOTE')
+                ->save();
+        
+        $ordinary = $client->makeNode()
+                ->setProperty(Service::KEY_ENTITY, Service::getEntityValue())
+                ->setProperty(Service::KEY_CODE, '2012_CMB_2_ORDINARY')
+                ->setProperty(Service::KEY_TYPE, Service::VALUE_TYPE_ORDINARY)
+                ->save();
+        
+        $budget->relateTo($ordinary, 'HAS_SERVICE')
+                ->save();
+        
+        $this->createRootFunctionalCategories($ordinary, $budget, $ville);
+        
+        $extraordinary = $client->makeNode()
+                ->setProperty(Service::KEY_ENTITY, Service::getEntityValue())
+                ->setProperty(Service::KEY_CODE, '2012_CMB_2_EXTRAORDINARY')
+                ->setProperty(Service::KEY_TYPE, Service::VALUE_TYPE_EXTRAORDINARY)
+                ->save();
+        
+        $budget->relateTo($extraordinary, 'HAS_SERVICE')
+                ->save();
+        
+        $this->createRootFunctionalCategories($extraordinary, $budget, $ville);
+        
+        $ordinaryCR = array('60', '61', '62', '68', '70', '71', '72', '78', '7x');
+        $extraordinaryCR = array('80', '81', '82', '88', '90', '91', '92', '98');
+        
+        
         
 
         if (($handle = fopen($input->getArgument(self::ARGUMENT_FILE), "r")) !== FALSE) {
@@ -106,11 +146,21 @@ class ImportCommand extends ContainerAwareCommand {
                 }
                 
                 $entry->setProperty(Entry::KEY_INDEX, $indice);
+                $entry->setProperty(Entry::KEY_CR, $data[5]);
                 
                 
                 $entry->save();
                 
-                $catF = $this->getOrCreateCategory($data[2]);
+                if (in_array($data[6], $ordinaryCR)) {
+                    $service = $ordinary;
+                    
+                } elseif (in_array($data[6], $extraordinaryCR)) {
+                    $service = $extraordinary;
+                } else {
+                    throw new \Exception('CR code does not match, catched '.$data[6]);
+                }
+                
+                $catF = $this->getOrCreateCategory($service, $budget, $ville, $data[2]);
                 
                 $catF->relateTo($entry, 'own')
                         ->save();
@@ -119,7 +169,7 @@ class ImportCommand extends ContainerAwareCommand {
                 
                $i++; 
                
-               if ($i > 2000) {
+               if ($i > 500) {
                    break;
                } 
             }
@@ -145,18 +195,29 @@ class ImportCommand extends ContainerAwareCommand {
     }
     
     
-    private function createRootFunctionalCategories($city) {
+    private function createRootFunctionalCategories($service, $budget, $city) {
         $a = $this->getRootCategories();
         
         foreach($a as $key => $label) {
             $n = $this->c->makeNode(array(
                 CategoryFonction::KEY_ENTITY => CategoryFonction::getEntityValue(),
                 CategoryFonction::KEY_CODE => (string) $key,
-                CategoryFonction::VALUE_TYPE => $key
+                CategoryFonction::KEY_LABEL, $label
             ))
                     ->save();
             
-            $city->relateTo($n, 'hasCategory')
+            $service->relateTo($n, 'hasCategory')
+                    ->save();
+            
+            $join = $this->getOrCreateJoinCategoryFunctional($key);
+            
+            $join->setProperty(JoinCategoryFonction::KEY_LABEL, $label)
+                    ->save();
+            
+            $n->relateTo($join, 'IS_EQUIVALENT')
+                    ->setProperty('service_type' , $service->getProperty(Service::KEY_TYPE))
+                    ->setProperty('budget', $budget->getProperty(Budget::KEY_CODE))
+                    ->setProperty('city' , $city->getProperty(City::KEY_CODE))
                     ->save();
         }
         
@@ -164,14 +225,14 @@ class ImportCommand extends ContainerAwareCommand {
     
     private $proxyCategory = array();
     
-    private function getOrCreateCategory($code, $row = 'last') {
+    private function getOrCreateCategory($service, $budget, $city, $code, $row = 'last') {
         
         if ($code === '000') {
             $code = '0';
         }
         
-        if (isset($this->proxyCategory[$code])) {
-            return $this->proxyCategory[$code];
+        if (isset($this->proxyCategory[$service->getId()][$code])) {
+            return $this->proxyCategory[$service->getId()][$code];
         }
         
         $a = str_split($code);
@@ -189,7 +250,7 @@ class ImportCommand extends ContainerAwareCommand {
         
         
         
-        $queryString = 'START n=node('.$this->currentCity->getId().') 
+        $queryString = 'START n=node('.$service->getId().') 
             MATCH n-['.hasCategory::getName().'*1..6]->x 
             WHERE x.entity=\''.CategoryFonction::getEntityValue().'\' AND x.'.CategoryFonction::KEY_CODE.' = \''.$preparedCode.'\'
             RETURN x';
@@ -203,7 +264,7 @@ class ImportCommand extends ContainerAwareCommand {
         echo $result->count()." Résultats \n";
         
         if ($result->count() === 1 ) {
-            $this->proxyCategory[$code] = $result[0]['x'];
+            $this->proxyCategory[$service->getId()][$code] = $result[0]['x'];
             return $result[0]['x'];
         } elseif($result->count() > 1) {
             throw new \Exception('Results should not be more than one...');
@@ -214,7 +275,7 @@ class ImportCommand extends ContainerAwareCommand {
                 $parentCode.= $a[$i];
             }
             
-            $parent = $this->getOrCreateCategory($parentCode);
+            $parent = $this->getOrCreateCategory($service, $budget, $city, $parentCode);
             
             $child = $this->c->makeNode(array(
                 CategoryFonction::KEY_ENTITY => CategoryFonction::getEntityValue(),
@@ -223,10 +284,99 @@ class ImportCommand extends ContainerAwareCommand {
             ))
                     ->save();
             
+            
+            $join = $this->getOrCreateJoinCategoryFunctional($preparedCode);
+            
+            $child->relateTo($join, 'IS_EQUIVALENT')
+                    ->setProperty('service_type' , $service->getProperty(Service::KEY_TYPE))
+                    ->setProperty('budget', $budget->getProperty(Budget::KEY_CODE))
+                    ->setProperty('city' , $city->getProperty(City::KEY_CODE))
+                    ->save();
+            
             $parent->relateTo($child, hasCategory::getName())
                     ->save();
             
-            $this->proxyCategory[$code] = $child;
+            $this->proxyCategory[$service->getId()][$code] = $child;
+            
+            return $child;
+        }
+        
+    }
+    
+    
+    private $joinCategoryRoot;
+    private $proxyJoinCategory;
+    
+    private function getOrCreateJoinCategoryFunctional($code, $row = 'last') {
+        
+        if ($this->joinCategoryRoot === null) {
+            $this->joinCategoryRoot = $this->c->makeNode(
+                        array(JoinCategoryFonction::KEY_ENTITY => JoinCategoryFonction::getEntityValue().'_ROOT',
+                        ))
+                    ->save();
+        }
+        
+        if ($code === '000') {
+            $code = '0';
+        }
+        
+        if (isset($this->proxyJoinCategory[$code])) {
+            return $this->proxyJoinCategory[$code];
+        }
+        
+        $a = str_split($code);
+        
+        if ($row == 'last') {
+            $row = count($a);
+        }
+        
+        $preparedCode = '';
+        for ($i = 0; $i < $row; $i++) {
+            
+            $preparedCode.= $a[$i];
+            
+        }
+        
+        
+        
+        $queryString = 'START n=node('.$this->joinCategoryRoot->getId().') 
+            MATCH n-['.hasCategory::getName().'*1..6]->x 
+            WHERE x.entity=\''.CategoryFonction::getEntityValue().'\' AND x.'.CategoryFonction::KEY_CODE.' = \''.$preparedCode.'\'
+            RETURN x';
+        
+        echo 'Prepare Query '.$queryString."\n";
+        
+        $query = new Query($this->c, $queryString);
+        
+        $result = $query->getResultSet();
+        
+        echo $result->count()." Résultats \n";
+        
+        if ($result->count() === 1 ) {
+            $this->proxyJoinCategory[$code] = $result[0]['x'];
+            return $result[0]['x'];
+        } elseif($result->count() > 1) {
+            throw new \Exception('Results should not be more than one...');
+        } elseif($result->count() === 0) {
+            
+            $parentCode = '';
+            for ($i = 0; $i < $row-1; $i++) {
+                $parentCode.= $a[$i];
+            }
+            
+            $parent = $this->getOrCreateJoinCategoryFunctional($parentCode);
+            
+            $child = $this->c->makeNode(array(
+                JoinCategoryFonction::KEY_ENTITY => CategoryFonction::getEntityValue(),
+                JoinCategoryFonction::KEY_CODE => $preparedCode,
+                JoinCategoryFonction::KEY_LABEL => '',
+            ))
+                    ->save();
+            
+            $parent->relateTo($child, hasCategory::getName())
+                    ->save();
+            
+            $this->proxyJoinCategory[$service->getId()][$code] = $child;
             
             return $child;
         }

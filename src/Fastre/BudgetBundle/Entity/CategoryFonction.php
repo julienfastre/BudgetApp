@@ -9,7 +9,7 @@ namespace Fastre\BudgetBundle\Entity;
  */
 class CategoryFonction  extends AbstractNode {
     
-   const VALUE_TYPE = 'functional_code';
+   const VALUE_TYPE = 'fcode';
    
    
     

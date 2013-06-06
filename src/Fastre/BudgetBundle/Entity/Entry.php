@@ -23,6 +23,8 @@ class Entry extends AbstractNode {
     
     const KEY_AMOUNT = 'amount';
     
+    const KEY_CR = 'cr';
+    
     
     
     public static function getEntityValue() {

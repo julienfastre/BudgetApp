@@ -9,7 +9,7 @@ namespace Fastre\BudgetBundle\Entity;
  */
 class CategoryEconomic extends AbstractNode {
     
-    const VALUE_TYPE = 'economic_code';
+    const VALUE_TYPE = 'ecode';
     
     const KEY_CODE_STRING = 'code_string';
     
