@@ -7,7 +7,7 @@ namespace Fastre\BudgetBundle\Entity\Relations;
  *
  * @author Julien Fastré <julien arobase fastre point info>
  */
-class hasCategory extends AbstractRelation {
+class HasCategory extends AbstractRelation {
     
     
     public static function getName() {

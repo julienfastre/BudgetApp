@@ -12,11 +12,13 @@ use Fastre\BudgetBundle\Entity\Entry;
 use Fastre\BudgetBundle\Entity\City;
 use Fastre\BudgetBundle\Entity\AbstractNode;
 use Fastre\BudgetBundle\Entity\CategoryFonction;
-use Fastre\BudgetBundle\Entity\Relations\hasCategory;
+use Fastre\BudgetBundle\Entity\Relations\HasCategory;
 use Everyman\Neo4j\Cypher\Query;
 use Fastre\BudgetBundle\Entity\Budget;
 use Fastre\BudgetBundle\Entity\Service;
 use Fastre\BudgetBundle\Entity\JoinCategoryFonction;
+use Fastre\BudgetBundle\Entity\Relations\HasRootCategory;
+use Fastre\BudgetBundle\Entity\Relations\IsEqual;
 
 /**
  * 
@@ -73,6 +75,8 @@ class ImportCommand extends ContainerAwareCommand {
         $ville->save();
         
         $this->currentCity = $ville;
+        
+        $rootFcode = $this->getOrCreateRootFCode($ville);
         
         
         
@@ -206,15 +210,16 @@ class ImportCommand extends ContainerAwareCommand {
             ))
                     ->save();
             
-            $service->relateTo($n, 'hasCategory')
+            $service->relateTo($n, HasCategory::getName())
                     ->save();
             
-            $join = $this->getOrCreateJoinCategoryFunctional($key);
+            echo "key est $key \n";
+            $join = $this->getOrCreateJoinCategoryFunctional($key, $city);
             
             $join->setProperty(JoinCategoryFonction::KEY_LABEL, $label)
                     ->save();
             
-            $n->relateTo($join, 'IS_EQUIVALENT')
+            $n->relateTo($join, IsEqual::getName())
                     ->setProperty('service_type' , $service->getProperty(Service::KEY_TYPE))
                     ->setProperty('budget', $budget->getProperty(Budget::KEY_CODE))
                     ->setProperty('city' , $city->getProperty(City::KEY_CODE))
@@ -230,6 +235,8 @@ class ImportCommand extends ContainerAwareCommand {
         if ($code === '000') {
             $code = '0';
         }
+        
+        
         
         if (isset($this->proxyCategory[$service->getId()][$code])) {
             return $this->proxyCategory[$service->getId()][$code];
@@ -248,10 +255,12 @@ class ImportCommand extends ContainerAwareCommand {
             
         }
         
-        
+        if ($preparedCode == '') {
+            throw new \Exception("code must not be empty ! 258");
+        }
         
         $queryString = 'START n=node('.$service->getId().') 
-            MATCH n-['.hasCategory::getName().'*1..6]->x 
+            MATCH n-['.HasCategory::getName().'*1..6]->x 
             WHERE x.entity=\''.CategoryFonction::getEntityValue().'\' AND x.'.CategoryFonction::KEY_CODE.' = \''.$preparedCode.'\'
             RETURN x';
         
@@ -285,15 +294,15 @@ class ImportCommand extends ContainerAwareCommand {
                     ->save();
             
             
-            $join = $this->getOrCreateJoinCategoryFunctional($preparedCode);
+            $join = $this->getOrCreateJoinCategoryFunctional($preparedCode, $city);
             
-            $child->relateTo($join, 'IS_EQUIVALENT')
+            $child->relateTo($join, IsEqual::getName())
                     ->setProperty('service_type' , $service->getProperty(Service::KEY_TYPE))
                     ->setProperty('budget', $budget->getProperty(Budget::KEY_CODE))
                     ->setProperty('city' , $city->getProperty(City::KEY_CODE))
                     ->save();
             
-            $parent->relateTo($child, hasCategory::getName())
+            $parent->relateTo($child, HasCategory::getName())
                     ->save();
             
             $this->proxyCategory[$service->getId()][$code] = $child;
@@ -304,25 +313,25 @@ class ImportCommand extends ContainerAwareCommand {
     }
     
     
-    private $joinCategoryRoot;
     private $proxyJoinCategory;
     
-    private function getOrCreateJoinCategoryFunctional($code, $row = 'last') {
+    private function getOrCreateJoinCategoryFunctional($code, $ville, $row = 'last') {
         
-        if ($this->joinCategoryRoot === null) {
-            $this->joinCategoryRoot = $this->c->makeNode(
-                        array(JoinCategoryFonction::KEY_ENTITY => JoinCategoryFonction::getEntityValue().'_ROOT',
-                        ))
-                    ->save();
-        }
+        echo "code est lg 320 : $code \n";
         
         if ($code === '000') {
             $code = '0';
         }
         
+        if ($code === '') {
+            throw new \Exception("code must not be empty !326 ");
+        }
+        
         if (isset($this->proxyJoinCategory[$code])) {
             return $this->proxyJoinCategory[$code];
         }
+        
+        $rfc = $this->getOrCreateRootFCode($ville);
         
         $a = str_split($code);
         
@@ -337,11 +346,13 @@ class ImportCommand extends ContainerAwareCommand {
             
         }
         
+        if ($preparedCode == '') {
+            throw new \Exception("code must not be empty ! ");
+        }
         
-        
-        $queryString = 'START n=node('.$this->joinCategoryRoot->getId().') 
-            MATCH n-['.hasCategory::getName().'*1..6]->x 
-            WHERE x.entity=\''.CategoryFonction::getEntityValue().'\' AND x.'.CategoryFonction::KEY_CODE.' = \''.$preparedCode.'\'
+        $queryString = 'START n=node('.$rfc->getId().') 
+            MATCH n-['.HasCategory::getName().'*1..6]->x 
+            WHERE x.entity=\''.JoinCategoryFonction::getEntityValue().'\' AND x.'.CategoryFonction::KEY_CODE.' = \''.$preparedCode.'\'
             RETURN x';
         
         echo 'Prepare Query '.$queryString."\n";
@@ -364,23 +375,77 @@ class ImportCommand extends ContainerAwareCommand {
                 $parentCode.= $a[$i];
             }
             
-            $parent = $this->getOrCreateJoinCategoryFunctional($parentCode);
+            $parent = $this->getOrCreateJoinCategoryFunctional($parentCode, $ville);
             
             $child = $this->c->makeNode(array(
                 JoinCategoryFonction::KEY_ENTITY => CategoryFonction::getEntityValue(),
-                JoinCategoryFonction::KEY_CODE => $preparedCode,
+                JoinCategoryFonction::KEY_CODE => (string) $preparedCode,
                 JoinCategoryFonction::KEY_LABEL => '',
             ))
                     ->save();
             
-            $parent->relateTo($child, hasCategory::getName())
+            $parent->relateTo($child, HasCategory::getName())
                     ->save();
             
-            $this->proxyJoinCategory[$service->getId()][$code] = $child;
+            $this->proxyJoinCategory[$code] = $child;
             
             return $child;
         }
         
+    }
+    
+    private $proxyRootFCode = null;
+
+    public function getOrCreateRootFCode(\Everyman\Neo4j\Node $ville) {
+        
+        if ($this->proxyRootFCode !== null) {
+            return $this->proxyRootFCode;
+        }
+        
+        $queryString = 'START n=node('.$ville->getId().') MATCH n-[:'.
+            HasRootCategory::getName().']->c RETURN c';
+        
+        $q = new Query($this->c, $queryString);
+        
+        $result = $q->getResultSet();
+        
+        if ($result->count() === 1) {
+            $this->proxyRootFCode = $result[0]['c'];
+            return $this->proxyRootFCode;
+        } else {
+            //create RootFCode node
+            $rFc = $this->c->makeNode(array(
+                \Fastre\BudgetBundle\Entity\RootCategoryFonction::KEY_ENTITY => \Fastre\BudgetBundle\Entity\RootCategoryFonction::getEntityValue(),
+                \Fastre\BudgetBundle\Entity\RootCategoryFonction::KEY_CODE => $ville->getProperty(City::KEY_CODE)
+            ))
+                    ->save();
+            
+            $ville->relateTo($rFc, HasRootCategory::getName())
+                    ->save();
+            
+            $this->proxyRootFCode = $rFc;
+            
+            
+            
+            //create first childs:
+            
+            $a = $this->getRootCategories();
+            
+            foreach ($a as $key => $label) {
+                $jc = $this->c->makeNode(array(
+                    JoinCategoryFonction::KEY_ENTITY => JoinCategoryFonction::getEntityValue(),
+                    JoinCategoryFonction::KEY_CODE => (string) $key,
+                    JoinCategoryFonction::KEY_LABEL => $label
+                ))
+                        ->save();
+                
+                $rFc->relateTo($jc, HasCategory::getName())
+                        ->save();
+            }
+            
+            return $this->proxyRootFCode;
+            
+        }
     }
     
     
